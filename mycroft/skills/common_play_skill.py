@@ -13,14 +13,14 @@
 # limitations under the License.
 
 import re
-from enum import Enum, IntEnum
+from enum import IntEnum
 from abc import ABC, abstractmethod
 from mycroft.messagebus.message import Message
 from .mycroft_skill import MycroftSkill
 from .audioservice import AudioService
 
 
-class CPSMatchLevel(Enum):
+class CPSMatchLevel(IntEnum):
     EXACT = 1
     MULTI_KEY = 2
     TITLE = 3
@@ -38,6 +38,17 @@ class CPSTrackStatus(IntEnum):
     BUFFERING = 6  # Incase it's an online source the buffering state or
     STALLED = 7  # stalled state helps to know when to show the buffering ui
     END_OF_MEDIA = 8  # helps to know if we want to do autoplay or something
+
+
+class CPSMatchType(IntEnum):
+    GENERIC = 1
+    MUSIC = 2
+    VIDEO = 3
+    AUDIOBOOK = 4
+    GAME = 5
+    PODCAST = 6
+    RADIO = 7
+    NEWS = 8
 
 
 class CommonPlaySkill(MycroftSkill, ABC):
@@ -62,6 +73,10 @@ class CommonPlaySkill(MycroftSkill, ABC):
         # NOTE: Derived skills will likely want to override self.spoken_name
         # with a translatable name in their initialize() method.
 
+        self.supported_media = [CPSMatchType.GENERIC, CPSMatchType.MUSIC]
+        # NOTE: derived skills will likely want to override this list,
+        # for backwards compatibility MUSIC is supported as a default
+
     def bind(self, bus):
         """Overrides the normal bind method.
 
@@ -80,6 +95,10 @@ class CommonPlaySkill(MycroftSkill, ABC):
     def __handle_play_query(self, message):
         """Query skill if it can start playback from given phrase."""
         search_phrase = message.data["phrase"]
+        media_type = message.data.get("media_type", CPSMatchType.GENERIC)
+
+        if media_type not in self.supported_media:
+            return
 
         # First, notify the requestor that we are attempting to handle
         # (this extends a timeout while this skill looks for a match)
@@ -88,7 +107,13 @@ class CommonPlaySkill(MycroftSkill, ABC):
                                         "searching": True}))
 
         # Now invoke the CPS handler to let the skill perform its search
-        result = self.CPS_match_query_phrase(search_phrase)
+        # TODO remove try: except: block in major release XXX
+        # it is needed for old skills which are not expecting media_type
+        # alternatively check for function signature before calling it
+        try:
+            result = self.CPS_match_query_phrase(search_phrase, media_type)
+        except:
+            result = self.CPS_match_query_phrase(search_phrase)
 
         if result:
             match = result[0]
@@ -195,7 +220,7 @@ class CommonPlaySkill(MycroftSkill, ABC):
     # All of the following must be implemented by a skill that wants to
     # act as a CommonPlay Skill
     @abstractmethod
-    def CPS_match_query_phrase(self, phrase):
+    def CPS_match_query_phrase(self, phrase, media_type):
         """Analyze phrase to see if it is a play-able phrase with this skill.
 
         Arguments:
