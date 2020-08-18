@@ -81,6 +81,10 @@ class CommonPlaySkill(MycroftSkill, ABC):
         """Query skill if it can start playback from given phrase."""
         search_phrase = message.data["phrase"]
 
+        # Save for CPS_play() later, e.g. if phrase includes modifiers like
+        # "... on the chromecast"
+        self.play_service_string = search_phrase
+
         # First, notify the requestor that we are attempting to handle
         # (this extends a timeout while this skill looks for a match)
         self.bus.emit(message.response({"phrase": search_phrase,
@@ -156,12 +160,15 @@ class CommonPlaySkill(MycroftSkill, ABC):
             self.audioservice.stop()
         self.bus.emit(message.forward("mycroft.stop"))
 
-        # Save for CPS_play() later, e.g. if phrase includes modifiers like
-        # "... on the chromecast"
-        self.play_service_string = phrase
-
         # Invoke derived class to provide playback data
         self.CPS_start(phrase, data)
+
+    def CPS_extend_timeout(self, timeout=5):
+        self.bus.emit(Message('play:query.response',
+                              {"phrase": self.play_service_string,
+                               "searching": True,
+                               "timeout": timeout,
+                               "skill_id": self.skill_id}))
 
     def CPS_play(self, *args, **kwargs):
         """Begin playback of a media file or stream
